@@ -1,0 +1,608 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Mô phỏng cài Ubuntu</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Ubuntu:wght@400;500&family=Ubuntu+Mono&display=swap">
+<style>
+/* Layout: one narrow column — short header, the virtual machine (status bar + guest screen), then the trail of steps. */
+:root{
+  --bg:#F5F2F4; --fg:#241B22; --muted:#6B5F68; --line:#E2DBE0; --card:#FFFFFF;
+  --accent:#E95420; --accent-ink:#B8410F; --ok:#1F7A3A; --ok-soft:#E2F2E6;
+  /* guest screen: a fixed Ubuntu look in both themes */
+  --aub:#2C001E; --aub-2:#4A1838; --w-bg:#FAFAFA; --w-fg:#1D1D1D; --w-muted:#5E5E5E; --w-line:#D6D6D6;
+  --w-sel:#FDEDE6; --x-bg:#FFF6F0; --x-fg:#3A2416; --x-key:#A33A12; --term:#0B0B0B; --term-fg:#E8E8E8;
+  --f-vi:"Be Vietnam Pro",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --f-ub:"Ubuntu","Be Vietnam Pro",system-ui,sans-serif;
+  --f-mono:"Ubuntu Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#16111A; --fg:#F0EAEE; --muted:#B3A6AF; --line:#352B33; --card:#211A23;
+  --accent:#F27A4B; --accent-ink:#FFA27D; --ok:#7BD394; --ok-soft:#173222; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#16111A; --fg:#F0EAEE; --muted:#B3A6AF; --line:#352B33; --card:#211A23;
+  --accent:#F27A4B; --accent-ink:#FFA27D; --ok:#7BD394; --ok-soft:#173222; color-scheme:dark }
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-vi);font-size:15px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 32px}
+.wrap{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+button{font:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* header */
+.top{display:flex;gap:12px;align-items:flex-start;justify-content:space-between}
+.top h1{font-size:1.45rem;line-height:1.2;margin:0;font-weight:700;text-wrap:balance}
+.top h1 span{color:var(--accent-ink)}
+.top p{margin:.3em 0 0;color:var(--muted);max-width:42em}
+.btn{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:999px;padding:.45em .95em;font-weight:600;font-size:.9rem;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+
+/* VM */
+.vm{border-radius:14px;overflow:hidden;border:1px solid var(--line);background:var(--card)}
+.vmbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:9px 12px;border-bottom:1px solid var(--line);font-size:.85rem}
+.vmname{font-weight:600;display:flex;align-items:center;gap:7px;margin-right:auto}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.dot.on{background:var(--ok)}
+.iso{display:flex;align-items:center;gap:6px;color:var(--muted)}
+.pill{font-size:.78rem;font-weight:600;border-radius:999px;padding:.12em .6em;background:var(--x-bg);color:var(--x-key)}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.mini{border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:8px;padding:.25em .65em;font-size:.82rem;font-weight:600}
+.mini:disabled{opacity:.45;cursor:not-allowed}
+
+.screen{background:var(--aub);min-height:440px;display:flex;flex-direction:column;color:var(--w-fg)}
+.gtop{display:flex;justify-content:center;color:#EDE3EA;font:500 .78rem var(--f-ub);padding:5px 0;background:#1A0012}
+.stage{flex:1;display:flex;align-items:center;justify-content:center;padding:14px 10px}
+.win{background:var(--w-bg);border-radius:10px;width:100%;max-width:620px;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.wt{font:500 .8rem var(--f-ub);color:var(--w-muted);text-align:center;padding:8px;border-bottom:1px solid var(--w-line)}
+.wb{padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.wb h2{font:400 1.25rem/1.25 var(--f-ub);margin:0 0 4px;color:var(--w-fg)}
+.wf{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-top:1px solid var(--w-line)}
+.pips{display:flex;gap:4px}.pips i{width:6px;height:6px;border-radius:50%;background:#CFCFCF}.pips i.on{background:#E95420}
+.gb{font:500 .9rem var(--f-ub);border-radius:6px;padding:.45em 1.1em;border:1px solid #BDBDBD;background:#fff;color:var(--w-fg)}
+.gb.go{background:#E95420;border-color:#E95420;color:#fff}
+.gb.go.inst{background:#2E7D32;border-color:#2E7D32}
+.gb:disabled{opacity:.45;cursor:not-allowed}
+
+.opt{display:flex;gap:10px;align-items:flex-start;text-align:left;width:100%;border:1px solid var(--w-line);border-radius:8px;padding:10px 12px;background:#fff;color:var(--w-fg)}
+.opt b{display:block;font:500 .98rem var(--f-ub)}
+.opt small{display:block;color:var(--w-muted);font:400 .82rem/1.35 var(--f-ub);margin-top:2px}
+.opt .r{flex:none;width:17px;height:17px;border-radius:50%;border:2px solid #8C8C8C;margin-top:2px;display:grid;place-items:center}
+.opt.sel{border-color:#E95420;background:var(--w-sel)}
+.opt.sel .r{border-color:#E95420}.opt.sel .r::after{content:"";width:8px;height:8px;border-radius:50%;background:#E95420}
+.static{border:1px solid var(--w-line);border-radius:8px;padding:9px 12px;background:#F1F1F1;font:400 .9rem var(--f-ub)}
+.static small{display:block;color:var(--w-muted)}
+
+/* Vietnamese explanation */
+.x{font-family:var(--f-vi);background:var(--x-bg);color:var(--x-fg);border-radius:8px;padding:10px 12px;font-size:.88rem;line-height:1.45;border:1px solid #F5CDB8;animation:pop .18s ease-out}
+.x .k{font-weight:700;color:var(--x-key);display:block;margin-bottom:2px}
+.x p{margin:2px 0}
+.x.warn{background:#FFF3D6;border-color:#F0D08A}
+.x.good{background:#E6F4EA;border-color:#B5DDBF;color:#163A20}.x.good .k{color:#1E6B34}
+@keyframes pop{from{opacity:.4;transform:translateY(-3px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.x{animation:none}}
+
+.field{display:flex;flex-direction:column;gap:3px;font:400 .85rem var(--f-ub);color:var(--w-muted)}
+.field .hint{font-size:.78rem;color:#B42318;min-height:0;font-family:var(--f-vi)}.field .hint.warn{color:#8A5300}.field .hint.good{color:#2E7D32}
+.field input{font:400 .95rem var(--f-ub);padding:7px 9px;border:1px solid #BDBDBD;border-radius:6px;color:var(--w-fg);background:#fff}
+dl.rv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0;font:400 .9rem var(--f-ub)}
+dl.rv dt{color:var(--w-muted)}dl.rv dd{margin:0}
+.bar{height:8px;border-radius:99px;background:#E4E4E4;overflow:hidden}.bar i{display:block;height:100%;background:#E95420;width:0;transition:width .25s linear}
+
+/* black screens: GRUB, messages */
+.term{background:var(--term);color:var(--term-fg);flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:18px 12px;text-align:center}
+.grub{font-family:var(--f-mono);border:1px solid #BDBDBD;width:min(30em,100%);padding:6px 0;text-align:left}
+.grub button{display:block;width:100%;text-align:left;background:none;border:0;color:var(--term-fg);font:1rem var(--f-mono);padding:5px 14px}
+.grub button.sel{background:#E8E8E8;color:#111}
+.term .x{max-width:30em;text-align:left}
+.ub{font:500 1.4rem var(--f-ub);color:#fff;display:flex;align-items:center;gap:8px}.ub i{width:18px;height:18px;border-radius:50%;background:#E95420}
+.key{font:500 .95rem var(--f-ub);background:#2A2A2A;color:#fff;border:1px solid #666;border-radius:6px;padding:.5em 1.2em}
+.mono{font-family:var(--f-mono)}
+
+/* desktop */
+.desk{flex:1;background:radial-gradient(120% 90% at 20% 10%,#7A2C5A 0%,var(--aub-2) 45%,var(--aub) 100%);display:flex;align-items:center;justify-content:center;padding:16px}
+.desk .card{background:var(--w-bg);color:var(--w-fg);border-radius:10px;padding:16px;max-width:30em;display:flex;flex-direction:column;gap:10px}
+.desk .tag{font:500 .8rem var(--f-ub);color:#fff;background:rgba(0,0,0,.35);border-radius:6px;padding:4px 8px;align-self:flex-start}
+
+/* guest OS: login, desktop, dock, windows */
+.os{position:relative;flex:1;min-height:440px;overflow:hidden;font-family:var(--f-ub);color:#fff}
+.otop{position:absolute;left:0;right:0;top:0;height:26px;background:#000;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:0 8px;font-size:.78rem;z-index:4}
+.otop .ws{display:flex;gap:4px}.otop .ws i{width:7px;height:7px;border-radius:50%;background:#fff;opacity:.45}.otop .ws i:first-child{opacity:1;width:16px;border-radius:9px}
+.otop .clk{font-variant-numeric:tabular-nums;font-weight:500}
+.otop .sys{justify-self:end}
+.otop button{background:none;border:0;color:#fff;font:inherit;padding:2px 7px;border-radius:5px}
+.otop button:hover,.otop button[aria-expanded="true"]{background:rgba(255,255,255,.18)}
+.gdm{position:absolute;inset:0;background:#232323;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:40px 16px 16px}
+.gdm .av{width:72px;height:72px;border-radius:50%;background:#77216F;display:grid;place-items:center;font-size:1.8rem;font-weight:500}
+.gdm .nm{font-size:1.1rem}
+.gdm input{font:1rem var(--f-ub);padding:8px 12px;border-radius:8px;border:1px solid #555;width:min(16em,86%);color:#fff;background:#3A3A3A}
+.gdm .err{color:#FFB3A7;min-height:1.2em;font-size:.85rem}
+.wall{position:absolute;inset:0;background:radial-gradient(120% 95% at 85% 110%,#E95420 0%,#A3275E 38%,#4A0F3C 66%,#2C001E 100%)}
+.dock{position:absolute;left:0;top:26px;bottom:0;width:52px;background:rgba(20,20,20,.72);display:flex;flex-direction:column;align-items:center;gap:8px;padding-top:10px;z-index:3}
+.dock button{width:38px;height:38px;border-radius:9px;border:0;display:grid;place-items:center;background:rgba(255,255,255,.08);position:relative}
+.dock button:hover,.dock button[aria-pressed="true"]{background:rgba(255,255,255,.26)}
+.dock button[aria-pressed="true"]::before{content:"";position:absolute;left:-7px;top:50%;width:4px;height:4px;border-radius:50%;background:#E95420;transform:translateY(-50%)}
+.dock svg{width:24px;height:24px}
+.dicon{position:absolute;left:66px;top:40px;width:86px;display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:0;color:#fff;font:.78rem/1.25 var(--f-ub);text-align:center;padding:6px;border-radius:8px;z-index:1}
+.dicon:hover{background:rgba(255,255,255,.16)}
+.dicon i{width:40px;height:40px;border-radius:9px;background:#E95420;display:grid;place-items:center;font-style:normal;font-weight:700;font-size:1.1rem}
+.dlabel{position:absolute;right:10px;bottom:6px;font-size:.74rem;opacity:.85}
+.pwr{position:absolute;right:6px;top:30px;background:#2B2B2B;border-radius:10px;padding:6px;min-width:150px;z-index:6;box-shadow:0 8px 22px rgba(0,0,0,.5)}
+.pwr button{display:block;width:100%;text-align:left;background:none;border:0;color:#fff;font:.9rem var(--f-ub);padding:8px 12px;border-radius:6px}
+.pwr button:hover{background:rgba(255,255,255,.12)}
+.pwr .cap{font-size:.75rem;color:#AAA;padding:4px 12px}
+.awin{position:absolute;left:60px;top:34px;right:8px;bottom:8px;background:#fff;color:#111;border-radius:10px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 10px 26px rgba(0,0,0,.45);z-index:2}
+.ahead{height:36px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:0 8px 0 12px;background:#EBEBEB;border-bottom:1px solid #D5D5D5;font-size:.85rem;font-weight:500}
+.ahead .ttl{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ahead .acts{display:flex;gap:6px;align-items:center;flex:none}
+.ahead button{font:500 .82rem var(--f-ub);border:1px solid #C4C4C4;background:#fff;border-radius:6px;padding:3px 10px;color:#111}
+.ahead .x{border:0;background:#D6D6D6;width:22px;height:22px;border-radius:50%;padding:0;position:relative}
+.ahead .x::before,.ahead .x::after{content:"";position:absolute;left:50%;top:50%;width:10px;height:2px;background:#333;transform:translate(-50%,-50%) rotate(45deg)}
+.ahead .x::after{transform:translate(-50%,-50%) rotate(-45deg)}
+.abody{flex:1;min-height:0;overflow:auto;padding:12px;font-size:.9rem}
+.abody textarea{width:100%;height:100%;min-height:8em;border:0;resize:none;font:1rem var(--f-mono);background:#fff;color:#111;outline:none}
+.savebar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 12px;background:#F4F4F4;border-bottom:1px solid #DDD;font-size:.84rem}
+.savebar input,.savebar select{font:.88rem var(--f-ub);padding:4px 6px;border:1px solid #BDBDBD;border-radius:5px;background:#fff;color:#111;min-width:0}
+.savebar .e{flex-basis:100%;color:#B42318;font-size:.8rem}
+.about{display:grid;grid-template-columns:auto 1fr;gap:8px 14px;margin:0}
+.about dt{color:#666}.about dd{margin:0;font-weight:500}
+.files{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px}
+.files button{display:flex;flex-direction:column;align-items:center;gap:4px;border:0;background:none;color:#222;font:.8rem var(--f-ub);padding:6px;border-radius:8px}
+.files button:hover{background:#EFEFEF}
+.files svg{width:38px;height:38px}
+.viewer{margin-top:10px;border:1px solid #DDD;border-radius:6px;padding:8px 10px;font-family:var(--f-mono);white-space:pre-wrap;background:#FAFAFA}
+.tty{background:#300A24;color:#EEE;font:.9rem var(--f-mono);height:100%;padding:8px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+.tty .pr{color:#8AE234}
+.tty input{background:transparent;border:0;color:#EEE;font:inherit;outline:none;width:55%;padding:0}
+.toast{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:#2B2B2B;color:#fff;font-size:.82rem;padding:7px 14px;border-radius:999px;z-index:7;white-space:nowrap}
+
+/* progress card */
+.prog{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;counter-reset:st}
+.steps li{display:flex;align-items:center;gap:7px;font-size:.84rem;line-height:1.25;color:var(--muted);padding:6px 8px;border-radius:9px;border:1px solid transparent;min-width:0}
+.steps li b{flex:none;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:.8rem;border:2px solid var(--line);color:var(--muted)}
+.steps li.now{border-color:var(--accent);color:var(--fg);font-weight:600;background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.steps li.now b{border-color:var(--accent);background:var(--accent);color:#fff}
+.steps li.done{color:var(--fg)}.steps li.done b{border-color:var(--ok);background:var(--ok);color:#fff}
+.next{display:flex;gap:8px;align-items:flex-start;font-size:.92rem}
+.next .lb{flex:none;font-size:.75rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--accent-ink);background:color-mix(in srgb,var(--accent) 12%,transparent);border-radius:6px;padding:3px 7px;margin-top:1px}
+.next.warn .lb{color:#8A5300;background:#FBEFD8}
+@media (max-width:560px){.steps{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* guide under the VM */
+.guide{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.guide h2{margin:0;font-size:1rem}
+.chk{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px;font-size:.9rem}
+.chk li{display:flex;gap:8px;align-items:flex-start;color:var(--muted)}
+.chk li.ok{color:var(--fg)}
+.chk i{flex:none;width:19px;height:19px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;font-style:normal;font-size:.72rem;color:#fff;margin-top:1px}
+.chk li.ok i{background:var(--ok);border-color:var(--ok)}
+.chk .sub{list-style:none;margin:6px 0 2px;padding:0;display:flex;flex-direction:column;gap:4px}
+.chk .sub li{font-size:.84rem}.chk .sub i{width:17px;height:17px;font-size:.66rem;color:var(--muted)}.chk .sub li.ok i{color:#fff}
+.chk small{display:block;color:var(--muted);font-size:.8rem}
+.guide .x{font-family:var(--f-vi)}
+
+/* trail */
+.trail{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.trail summary{font-weight:600;cursor:pointer}
+.trail ol{margin:10px 0 0;padding-left:1.4em;display:flex;flex-direction:column;gap:3px;color:var(--muted);font-size:.9rem}
+.trail li b{color:var(--fg);font-weight:600}
+.note{color:var(--muted);font-size:.82rem;text-align:center}
+@media (max-width:480px){.top{flex-direction:column}.screen{min-height:480px}.wb{padding:14px}.stage{padding:10px 6px}}
+</style>
+</head><body>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Mô phỏng cài <span>Ubuntu 24.04</span></h1>
+      <p>Chọn thử mọi lựa chọn – khung màu cam cho biết kết quả. Chọn sai cũng không mất gì.</p>
+    </div>
+    <button class="btn" id="resetBtn" type="button">↺ Làm lại</button>
+  </header>
+
+  <section class="prog" id="prog" aria-live="polite"></section>
+
+  <section class="vm" aria-label="Máy ảo">
+    <div class="vmbar">
+      <span class="vmname"><span class="dot" id="pwr"></span>Máy ảo của trường ABC</span>
+      <span class="iso">Ổ CD ảo: <span class="pill" id="isoTag">Đang gắn bộ cài (ISO)</span></span>
+      <button class="mini" id="isoBtn" type="button">Tháo bộ cài</button>
+      <button class="mini" id="offBtn" type="button">Tắt máy</button>
+    </div>
+    <div class="screen" id="screen" aria-live="polite"></div>
+  </section>
+
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const scr = $('#screen');
+
+/* chức năng + kết quả của từng lựa chọn */
+const X = {
+  'grub:0': ['Try or Install Ubuntu', 'Mở trình cài đặt Ubuntu từ bộ cài.'],
+  'grub:1': ['Ubuntu (safe graphics)', 'Cũng mở trình cài, nhưng dùng chế độ hình ảnh an toàn – chỉ cần khi màn hình bị đen hoặc treo.'],
+  'grub:2': ['Test memory', 'Máy chỉ kiểm tra RAM, mất nhiều thời gian và không cài được gì.'],
+  'lang:English': ['English', 'Trình cài và Ubuntu hiển thị bằng tiếng Anh.'],
+  'lang:Tiếng Việt': ['Tiếng Việt', 'Trình cài và Ubuntu hiển thị bằng tiếng Việt (mô phỏng vẫn giữ tiếng Anh).'],
+  'lang:Français': ['Français', 'Trình cài và Ubuntu hiển thị bằng tiếng Pháp.'],
+  'a:install': ['Install Ubuntu (cài đặt)', 'Ubuntu được ghi lên ổ cứng. Tắt máy, bật lại vẫn còn.'],
+  'a:try': ['Try Ubuntu (chạy thử)', 'Ubuntu chạy từ bộ cài, không ghi gì lên ổ cứng. Máy CHƯA được cài – tắt máy là mất hết.'],
+  't:interactive': ['Interactive installation (cài có hướng dẫn)', 'Em tự chọn từng bước: ứng dụng, ổ đĩa, tài khoản.'],
+  't:automated': ['Automated installation (cài tự động)', 'Máy tự cài theo tệp cấu hình có sẵn, em không tự chọn được – bài này không dùng.'],
+  'p:default': ['Default selection', 'Chỉ cài trình duyệt và tiện ích cơ bản: cài nhanh, tốn ít dung lượng.'],
+  'p:extended': ['Extended selection', 'Cài thêm bộ văn phòng và tiện ích: cài lâu hơn, tốn thêm dung lượng.'],
+  'd:erase': ['Erase disk and install Ubuntu', 'TOÀN BỘ dữ liệu trên ổ đang chọn bị xoá rồi cài Ubuntu lên đó. Ở đây là ổ ảo sda 25 GB (đang trống). Máy thật: chọn nhầm ổ là mất hết dữ liệu.'],
+  'd:manual': ['Manual installation (tự chia ổ)', 'Em phải tự tạo, chia phân vùng – bài này không dùng.'],
+  'f:restart': ['Restart now (khởi động lại)', 'Hoàn tất cài đặt; máy nhắc tháo bộ cài rồi khởi động lại vào Ubuntu vừa cài.'],
+  'f:keep': ['Continue testing (dùng thử tiếp)', 'Ở lại phiên chạy thử từ bộ cài – mọi thay đổi không được lưu.'],
+};
+const BLOCK = {'grub:2':1, 't:automated':1, 'd:manual':1};
+const STEPS = ['lang','tryinst','type','apps','disk','account','review'];
+const NAMES = {grub:'Menu khởi động (GRUB)', lang:'Welcome to Ubuntu', tryinst:'Try or Install Ubuntu', type:'Type of installation', apps:'Applications', disk:'How do you want to install Ubuntu?', account:'Create your account', review:'Review your choices', installing:'Installing', done:'Installation complete', remove:'Please remove the installation medium', live:'Phiên chạy thử (Try)', login:'Đăng nhập', desktop:'Ubuntu đã cài', nobootable:'Không khởi động được'};
+
+let S;
+function fresh(){ S = {power:false, iso:true, installed:false, screen:'off', pick:{}, gsel:0, log:[], note:null, bootN:0, app:null, saved:false, liveFile:null, liveLost:false, diskFile:null, c3:false, c4:false, fm:'home', view:false, pwr:false, edit:'', saveAs:false, saveErr:'', term:[], toast:null, loginErr:false, user:{name:'', host:'', u:'', pass:'', pass2:'', hostEdited:false, uEdited:false}}; }
+
+function xbox(key, cls=''){
+  const x = X[key]; if(!x) return '';
+  return `<div class="x ${BLOCK[key]?'warn':''} ${cls}" role="note"><span class="k">Nếu chọn ${x[0]}</span><p>→ ${x[1]}</p></div>`;
+}
+function note(title, body, cls=''){ return `<div class="x ${cls}" role="note"><span class="k">${title}</span>${body.map(t=>`<p>${t}</p>`).join('')}</div>`; }
+function opt(g, v, title, sub){
+  const sel = S.pick[g] === v;
+  return `<button type="button" class="opt ${sel?'sel':''}" data-g="${g}" data-v="${v}" aria-pressed="${sel}"><span class="r"></span><span><b>${title}</b>${sub?`<small>${sub}</small>`:''}</span></button>${sel ? xbox(g+':'+v) : ''}`;
+}
+function win(body, {next=true, nextOk=true, install=false}={}){
+  const i = STEPS.indexOf(S.screen);
+  return `<div class="gtop">Install Ubuntu 24.04 LTS</div><div class="stage"><div class="win">
+    <div class="wt">Install Ubuntu 24.04 LTS</div><div class="wb">${body}</div>
+    <div class="wf"><button class="gb" type="button" id="back" ${i<=0?'disabled':''}>Back</button>
+      <span class="pips">${STEPS.map((s,k)=>`<i class="${k<=i?'on':''}"></i>`).join('')}</span>
+      ${next?`<button class="gb go ${install?'inst':''}" type="button" id="next" ${nextOk?'':'disabled'}>${install?'Install':'Next'}</button>`:'<span></span>'}</div></div></div>`;
+}
+function go(s){ S.screen = s; if(NAMES[s] && S.log[S.log.length-1] !== NAMES[s]) S.log.push(NAMES[s]); render(); }
+function pickOk(g){ const v = S.pick[g]; return v && !BLOCK[g+':'+v]; }
+
+function render(){
+  const s = S.screen, p = S.pick;
+  $('#pwr').className = 'dot' + (S.power ? ' on' : '');
+  $('#isoTag').textContent = S.iso ? 'Đang gắn bộ cài (ISO)' : 'Trống – đã tháo bộ cài';
+  $('#isoTag').className = 'pill' + (S.iso ? '' : ' ok');
+  $('#isoBtn').textContent = S.iso ? 'Tháo bộ cài' : 'Gắn lại bộ cài';
+  $('#offBtn').disabled = !S.power;
+  let h = '';
+
+  if (s === 'off') {
+    h = `<div class="term"><div class="ub"><i></i>Máy đang tắt</div>
+      ${S.note ? note(S.note[0], S.note[1], 'warn') : ''}
+      <button class="key" type="button" id="on">⏻ Bật máy</button></div>`;
+  }
+  else if (s === 'noboot') {
+    h = `<div class="term"><p class="mono">No bootable medium found! System halted.</p>
+      ${note('Máy không khởi động được', ['Ổ cứng chưa có hệ điều hành và bộ cài đã bị tháo.'], 'warn')}</div>`;
+  }
+  else if (s === 'grub') {
+    const items = ['Try or Install Ubuntu','Ubuntu (safe graphics)','Test memory'];
+    h = `<div class="term"><p class="mono">GNU GRUB version 2.12</p>
+      <div class="grub" role="listbox" aria-label="Menu khởi động">${items.map((t,i)=>`<button type="button" role="option" data-i="${i}" class="${S.gsel===i?'sel':''}" aria-selected="${S.gsel===i}">${S.gsel===i?'*':'&nbsp;'}${t}</button>`).join('')}</div>
+      ${S.installed ? note('Máy lại vào bộ cài!', ['Bộ cài vẫn còn gắn nên máy khởi động từ bộ cài thay vì ổ cứng.'], 'warn') : xbox('grub:'+S.gsel)}
+      <button class="key" type="button" id="enter" ${S.gsel===2?'disabled':''}>ENTER ⏎</button></div>`;
+  }
+  else if (s === 'lang') {
+    const L = ['English','Tiếng Việt','Français'];
+    h = win(`<h2>Welcome to Ubuntu</h2>${L.map(l=>opt('lang', l, l)).join('')}`, {nextOk:!!p.lang});
+  }
+  else if (s === 'tryinst') {
+    h = win(`<h2>What do you want to do with Ubuntu?</h2>${opt('a','install','Install Ubuntu','This will make changes to your computer')}${opt('a','try','Try Ubuntu','You can make changes without affecting your computer. Changes are lost when you restart.')}`, {nextOk:!!p.a});
+  }
+  else if (s === 'type') {
+    h = win(`<h2>How would you like to install Ubuntu?</h2>${opt('t','interactive','Interactive installation','Guided step by step')}${opt('t','automated','Automated installation','Uses an autoinstall.yaml file')}`, {nextOk:pickOk('t')});
+  }
+  else if (s === 'apps') {
+    h = win(`<h2>What apps would you like to install?</h2>${opt('p','default','Default selection','Web browser and basic utilities')}${opt('p','extended','Extended selection','Office tools and utilities')}`, {nextOk:!!p.p});
+  }
+  else if (s === 'disk') {
+    h = win(`<h2>How do you want to install Ubuntu?</h2>${opt('d','erase','Erase disk and install Ubuntu','Warning: This will delete all your programs, documents, photos, music, and any other files.')}${opt('d','manual','Manual installation','Create or resize partitions yourself')}
+      <div class="static">sda &nbsp;VBOX HARDDISK &nbsp;(25.0 GB)<small>No operating system detected</small></div>`, {nextOk:pickOk('d')});
+  }
+  else if (s === 'account') {
+    const u = S.user;
+    h = win(`<h2>Create your account</h2>
+      <label class="field" for="fn">Your name<input id="fn" value="${esc(u.name)}" autocomplete="off" spellcheck="false"></label>
+      <label class="field" for="fh">Your computer's name<input id="fh" value="${esc(u.host)}" autocomplete="off" spellcheck="false"><span class="hint" id="hh"></span></label>
+      <label class="field" for="fu">Your username<input id="fu" value="${esc(u.u)}" autocomplete="off" spellcheck="false" autocapitalize="off"><span class="hint" id="hu"></span></label>
+      <label class="field" for="fp">Choose a password<input id="fp" type="password" value="${esc(u.pass)}" autocomplete="new-password"><span class="hint" id="hp"></span></label>
+      <label class="field" for="fc">Confirm password<input id="fc" type="password" value="${esc(u.pass2)}" autocomplete="new-password"><span class="hint" id="hc"></span></label>
+      ${note('Tạo tài khoản', ['Tên đăng nhập viết thường, không dấu. Nhớ mật khẩu để đăng nhập sau khi cài.'])}`, {nextOk:accOk().ok});
+  }
+  else if (s === 'review') {
+    h = win(`<h2>Review your choices</h2><dl class="rv">
+      <dt>Disk setup</dt><dd>Erase disk and install Ubuntu</dd>
+      <dt>Installation disk</dt><dd><b>sda VBOX HARDDISK (25.0 GB)</b></dd>
+      <dt>Applications</dt><dd>${p.p==='extended'?'Extended':'Default'} selection</dd>
+      <dt>Account</dt><dd>${S.user.u}@${S.user.host}</dd></dl>
+      ${note('Nếu bấm Install', ['→ Ổ ghi ở dòng <b>Installation disk</b> bị xoá và bắt đầu cài, không quay lại được. Muốn sửa thì bấm Back.'], 'warn')}`, {install:true});
+  }
+  else if (s === 'installing') {
+    h = win(`<h2>Installing Ubuntu…</h2><div class="bar"><i id="pb"></i></div><p style="margin:0;font:400 .85rem var(--f-ub);color:var(--w-muted)" id="ptxt">Copying files…</p>
+      `, {next:false});
+  }
+  else if (s === 'done') {
+    h = win(`<h2>Ubuntu 24.04 LTS is installed and ready to use</h2>
+      <p style="margin:0;font:400 .9rem var(--f-ub);color:var(--w-muted)">Restart to complete the installation or continue testing.</p>
+      ${opt('f','restart','Restart now','')}${opt('f','keep','Continue testing','')}`, {nextOk:!!S.pick.f});
+  }
+  else if (s === 'remove') {
+    h = `<div class="term"><div class="ub"><i></i>ubuntu</div>
+      <p style="font-family:var(--f-ub);margin:0">Please remove the installation medium, then press ENTER:</p>
+      ${S.iso ? note('Nếu nhấn ENTER khi chưa tháo bộ cài', ['→ Máy khởi động lại vào trình cài đặt, không vào Ubuntu đã cài.'], 'warn') : note('Nếu nhấn ENTER bây giờ', ['→ Máy khởi động từ ổ cứng vừa cài.'], 'good')}
+      <button class="key" type="button" id="enter">ENTER ⏎</button></div>`;
+  }
+  else if (s === 'live' || s === 'desktop' || s === 'login') {
+    h = guestOS();
+  }
+  scr.innerHTML = h;
+  drawProg();
+  bind();
+}
+
+/* ===== màn hình Create your account: kiểm tra như trình cài thật ===== */
+const slug = t => t.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
+function accOk(){
+  const u = S.user, e = {};
+  if (u.host && !/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(u.host)) e.h = 'Chỉ dùng chữ không dấu, số và dấu gạch ngang (-).';
+  if (u.u && !/^[a-z][a-z0-9_-]*$/.test(u.u)) e.u = 'Viết thường, không dấu, không cách, bắt đầu bằng chữ cái.';
+  if (u.pass && u.pass.length < 8) e.p = 'Weak password: mật khẩu yếu, nên dài từ 8 kí tự.';
+  if (u.pass2 && u.pass2 !== u.pass) e.c = 'Passwords do not match: hai mật khẩu chưa khớp.';
+  const ok = !!(u.name.trim() && u.host && u.u && u.pass && u.pass2 === u.pass && !e.h && !e.u);
+  return {ok, e};
+}
+function bindAcc(){
+  const u = S.user, el = id => document.getElementById(id);
+  const sync = () => {
+    const {ok, e} = accOk();
+    el('hh').textContent = e.h || ''; el('hu').textContent = e.u || '';
+    el('hp').textContent = e.p || (u.pass ? 'Mật khẩu hợp lệ.' : ''); el('hp').className = 'hint' + (e.p ? ' warn' : (u.pass ? ' good' : ''));
+    el('hc').textContent = e.c || '';
+    el('next').disabled = !ok;
+  };
+  el('fn').oninput = ev => {
+    u.name = ev.target.value;
+    const first = slug(u.name.trim().split(/\s+/)[0] || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!u.hostEdited) { u.host = first ? first + '-VirtualBox' : ''; el('fh').value = u.host; }
+    if (!u.uEdited) { u.u = first; el('fu').value = u.u; }
+    sync();
+  };
+  el('fh').oninput = ev => { u.host = ev.target.value; u.hostEdited = true; sync(); };
+  el('fu').oninput = ev => { u.u = ev.target.value; u.uEdited = true; sync(); };
+  el('fp').oninput = ev => { u.pass = ev.target.value; sync(); };
+  el('fc').oninput = ev => { u.pass2 = ev.target.value; sync(); };
+  sync();
+}
+
+/* ===== hệ điều hành khách: màn hình đăng nhập, desktop, ứng dụng ===== */
+const ICON = {
+  files:'<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#E8A33D" d="M2 6a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z"/><path fill="#F5C26B" d="M2 9h20v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z"/></svg>',
+  text:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="2" width="16" height="20" rx="2" fill="#fff"/><path d="M7 7h10M7 11h10M7 15h7" stroke="#555" stroke-width="1.6"/></svg>',
+  settings:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.6" fill="#8f8f8f"/><circle cx="12" cy="12" r="3.4" fill="#2b2b2b"/><path d="M12 1.8v3.2M12 19v3.2M1.8 12H5M19 12h3.2M4.8 4.8l2.2 2.2M17 17l2.2 2.2M4.8 19.2 7 17M17 7l2.2-2.2" stroke="#8f8f8f" stroke-width="2.4"/></svg>',
+  term:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2" fill="#300A24"/><path d="M6 9l3 3-3 3M11 15h6" stroke="#fff" stroke-width="1.8" fill="none"/></svg>',
+  folder:'<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#E8A33D" d="M2 6a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z"/></svg>',
+  doc:'<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" stroke="#888" d="M5 2h10l4 4v16H5z"/><path d="M8 10h8M8 13h8M8 16h5" stroke="#777"/></svg>'
+};
+const APPS = [['files','Files'],['text','Text Editor'],['settings','Settings'],['term','Terminal']];
+const clock = () => { const d = new Date(); return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}) + '  ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'); };
+const isLive = () => S.screen === 'live';
+const curFile = () => isLive() ? S.liveFile : S.diskFile;
+const who = () => isLive() ? ['ubuntu','ubuntu'] : [S.user.u, S.user.host];
+
+function guestOS(){
+  if (S.screen === 'login') {
+    return `<div class="os"><div class="otop"><span></span><span class="clk">${clock()}</span><span></span></div><div class="gdm">
+      <div class="av">${esc(S.user.name.charAt(0).toUpperCase())}</div><div class="nm">${esc(S.user.name)}</div>
+      <input type="password" id="lp" placeholder="Password" aria-label="Mật khẩu" autocomplete="off">
+      <div class="err" role="alert">${S.loginErr ? 'Sorry, that didn’t work. Please try again.' : ''}</div>
+      <button class="gb go" type="button" id="lb">Log In</button></div></div>`;
+  }
+  const live = isLive();
+  return `<div class="os"><div class="wall"></div>
+    <div class="otop"><span class="ws"><i></i><i></i></span><span class="clk">${clock()}</span><span class="sys"><button type="button" id="pw" aria-haspopup="true" aria-expanded="${!!S.pwr}" aria-label="Menu nguồn">⏻ ▾</button></span></div>
+    <nav class="dock" aria-label="Thanh ứng dụng">${APPS.map(([k,l]) => `<button type="button" data-a="${k}" aria-label="${l}" title="${l}" aria-pressed="${S.app===k}">${ICON[k]}</button>`).join('')}</nav>
+    ${live && !S.installed ? `<button type="button" class="dicon" id="instIcon"><i>U</i>Install Ubuntu 24.04 LTS</button>` : ''}
+    <div class="dlabel">${live ? 'Try Ubuntu (live session)' : 'Ubuntu 24.04 LTS · ' + esc(S.user.host)}</div>
+    ${appWin()}
+    ${S.pwr ? `<div class="pwr" role="menu"><div class="cap">Power</div><button type="button" id="pRe" role="menuitem">Restart…</button><button type="button" id="pOff" role="menuitem">Power Off…</button><button type="button" id="pOut" role="menuitem">Log Out…</button></div>` : ''}
+    ${S.toast ? `<div class="toast" role="status">${esc(S.toast)}</div>` : ''}</div>`;
+}
+
+function appWin(){
+  const a = S.app; if (!a) return '';
+  const f = curFile();
+  const head = (t, acts='') => `<div class="ahead"><span class="ttl">${t}</span><span class="acts">${acts}<button class="x" type="button" id="xApp" aria-label="Đóng cửa sổ"></button></span></div>`;
+  if (a === 'settings') return `<div class="awin">${head('Settings › System › About')}<div class="abody"><dl class="about">
+      <dt>Device Name</dt><dd>${esc(who()[1])}</dd><dt>OS Name</dt><dd>Ubuntu 24.04.5 LTS</dd><dt>OS Type</dt><dd>64-bit</dd>
+      <dt>GNOME Version</dt><dd>46</dd><dt>Virtualization</dt><dd>Oracle</dd><dt>Disk Capacity</dt><dd>26.8 GB</dd></dl></div></div>`;
+  if (a === 'text') return `<div class="awin">${head('Text Editor' + (S.edit !== (f ? f.text : '') && S.edit ? ' *' : ''), '<button type="button" id="saveBtn">Save</button>')}
+      ${S.saveAs ? `<div class="savebar"><label for="sn">Name</label><input id="sn" value="KiemTra.txt" spellcheck="false" style="width:9em"><label for="sd">Folder</label><select id="sd"><option value="Documents">Documents</option><option value="Desktop">Desktop</option><option value="Home">Home</option></select><button class="gb go" type="button" id="saveOk">Save</button><button class="gb" type="button" id="saveNo">Cancel</button>${S.saveErr ? `<span class="e">${S.saveErr}</span>` : ''}</div>` : ''}
+      <div class="abody"><textarea id="ed" spellcheck="false" aria-label="Nội dung tệp" placeholder="Ho ten: ...">${esc(S.edit)}</textarea></div></div>`;
+  if (a === 'files') {
+    const docs = S.fm === 'docs';
+    return `<div class="awin">${head('Files › Home' + (docs ? ' › Documents' : ''), docs ? '<button type="button" id="upBtn">‹ Home</button>' : '')}<div class="abody"><div class="files">${docs
+      ? (f ? `<button type="button" id="openTxt">${ICON.doc}KiemTra.txt</button>` : '<p style="color:#777;margin:0;grid-column:1/-1">Folder is empty</p>')
+      : ['Desktop','Documents','Downloads','Music','Pictures','Videos'].map(n => `<button type="button" data-f="${n}">${ICON.folder}${n}</button>`).join('')}</div>
+      ${docs && S.view && f ? `<div class="viewer">${esc(f.text)}</div>` : ''}</div></div>`;
+  }
+  if (a === 'term') {
+    const [u, h] = who();
+    if (!S.term.length) S.term.push(`<span class="pr">${esc(u)}@${esc(h)}:~$</span> `);
+    return `<div class="awin">${head(`${esc(u)}@${esc(h)}: ~`)}<div class="abody" style="padding:0"><div class="tty" id="tm">${S.term.join('')}<input id="ti" aria-label="Gõ lệnh rồi nhấn Enter" autocomplete="off" spellcheck="false" autocapitalize="off"></div></div></div>`;
+  }
+  return '';
+}
+
+function sawVersion(){ if (S.screen === 'desktop') S.c3 = true; }
+function openedFile(){ const f = curFile(); if (S.screen === 'desktop' && f && f.boot < S.bootN) S.c4 = true; }
+function flash(m){ S.toast = m; clearTimeout(flash.t); flash.t = setTimeout(() => { S.toast = null; render(); }, 2600); }
+
+function runCmd(cmd){
+  const [u, h] = who(), f = curFile(), c = cmd.replace(/\s+/g, ' ');
+  let out = '';
+  if (c === 'lsb_release -a') out = 'Distributor ID:\tUbuntu\nDescription:\tUbuntu 24.04.5 LTS\nRelease:\t24.04\nCodename:\tnoble';
+  else if (c === 'cat /etc/os-release') out = 'PRETTY_NAME="Ubuntu 24.04.5 LTS"\nNAME="Ubuntu"\nVERSION_ID="24.04"\nVERSION="24.04.5 LTS (Noble Numbat)"';
+  else if (c === 'hostnamectl') out = ` Static hostname: ${h}\nOperating System: Ubuntu 24.04.5 LTS\n          Kernel: Linux 6.8.0-41-generic\n  Hardware Model: VirtualBox`;
+  else if (c === 'lsblk') out = isLive()
+      ? 'NAME   SIZE TYPE MOUNTPOINTS\nloop0  1.6G loop /rofs\nsda     25G disk \nsr0    5.8G rom  /cdrom'
+      : `NAME     SIZE TYPE MOUNTPOINTS\nsda       25G disk \n├─sda1     1M part \n└─sda2    25G part /\nsr0    ${S.iso ? ' 5.8G' : '1024M'} rom  `;
+  else if (c === 'ls' || c === 'ls ~') out = 'Desktop  Documents  Downloads  Music  Pictures  Videos';
+  else if (c === 'ls Documents' || c === 'ls ~/Documents') out = f ? 'KiemTra.txt' : '';
+  else if (/^cat (~\/)?Documents\/KiemTra\.txt$/.test(c)) out = f ? f.text : 'cat: Documents/KiemTra.txt: No such file or directory';
+  else if (c === 'clear') { S.term = []; render(); return; }
+  else if (c === 'help') out = 'Lệnh có trong mô phỏng: lsb_release -a, cat /etc/os-release, hostnamectl, lsblk, ls Documents, cat Documents/KiemTra.txt, clear';
+  else if (c) out = `${c.split(' ')[0]}: lệnh này chưa có trong mô phỏng. Gõ help để xem danh sách.`;
+  S.term.push(esc(cmd) + '\n' + (out ? esc(out) + '\n' : '') + `<span class="pr">${esc(u)}@${esc(h)}:~$</span> `);
+  if (/^(lsb_release -a|cat \/etc\/os-release|hostnamectl)$/.test(c)) sawVersion();
+  if (/^cat (~\/)?Documents\/KiemTra\.txt$/.test(c) && f) openedFile();
+  render();
+}
+
+function bindOS(){
+  const on = (id, fn) => { const e = document.getElementById(id); if (e) e.onclick = fn; };
+  const lp = document.getElementById('lp');
+  const login = () => { if (lp.value !== S.user.pass) { S.loginErr = true; render(); return; } S.loginErr = false; S.app = null; go('desktop'); };
+  on('lb', login);
+  if (lp) { lp.onkeydown = e => { if (e.key === 'Enter') login(); }; lp.focus(); }
+  document.querySelectorAll('.dock button').forEach(b => b.onclick = () => { S.app = b.dataset.a; S.fm = 'home'; S.view = false; S.pwr = false; S.saveAs = false; if (S.app === 'text') S.edit = curFile() ? curFile().text : ''; if (S.app === 'settings') sawVersion(); render(); });
+  on('pw', () => { S.pwr = !S.pwr; render(); });
+  on('pRe', () => { S.pwr = false; boot(); });
+  on('pOff', () => { S.pwr = false; S.power = false; S.note = isLive() && !S.installed && S.liveFile ? ['Phiên chạy thử đã kết thúc', ['Mọi thứ em làm trong phiên Try Ubuntu đã mất. Ổ cứng vẫn trống vì máy chưa được cài.']] : null; S.liveLost = !!S.liveFile; S.liveFile = null; go('off'); });
+  on('pOut', () => { S.pwr = false; S.app = null; if (isLive()) return; go('login'); });
+  on('instIcon', () => { S.pick.a = undefined; S.app = null; go('tryinst'); });
+  on('xApp', () => { S.app = null; S.saveAs = false; render(); });
+  const ed = document.getElementById('ed'); if (ed) { ed.oninput = () => { S.edit = ed.value; }; }
+  on('saveBtn', () => { S.saveAs = true; S.saveErr = ''; render(); });
+  on('saveNo', () => { S.saveAs = false; render(); });
+  on('saveOk', () => {
+    const n = document.getElementById('sn').value.trim(), d = document.getElementById('sd').value;
+    if (n !== 'KiemTra.txt') { S.saveErr = 'Đặt tên tệp đúng là KiemTra.txt'; return render(); }
+    if (d !== 'Documents') { S.saveErr = 'Lưu vào thư mục Documents'; return render(); }
+    if (!S.edit.trim()) { S.saveErr = 'Gõ họ tên của em vào tệp trước khi lưu'; return render(); }
+    const rec = {text:S.edit, boot:S.bootN};
+    if (isLive()) S.liveFile = rec; else S.diskFile = rec;
+    S.saveAs = false; S.saved = true; flash('Đã lưu Documents/KiemTra.txt'); render();
+  });
+  document.querySelectorAll('.files button[data-f]').forEach(b => b.onclick = () => { if (b.dataset.f === 'Documents') { S.fm = 'docs'; S.view = false; render(); } else flash(`Thư mục ${b.dataset.f} trống`); });
+  on('upBtn', () => { S.fm = 'home'; render(); });
+  on('openTxt', () => { S.view = true; openedFile(); render(); });
+  const ti = document.getElementById('ti');
+  if (ti) { ti.focus(); ti.onkeydown = e => { if (e.key === 'Enter') runCmd(ti.value.trim()); }; const tm = document.getElementById('tm'); tm.scrollTop = tm.scrollHeight; }
+}
+
+/* bảng tiến trình: 4 chặng theo quy trình chung, kèm việc cần làm tiếp */
+const STAGES = ['Khởi động từ bộ cài', 'Cài đặt', 'Tháo bộ cài, khởi động lại', 'Đăng nhập, kiểm tra'];
+function stage(){
+  const s = S.screen;
+  if (s === 'login' || s === 'desktop') return 3;
+  if (s === 'remove' || (S.installed && (s === 'grub' || s === 'off' || s === 'noboot'))) return 2;
+  if (['lang','tryinst','type','apps','disk','account','review','installing','done','live'].includes(s)) return 1;
+  return 0;
+}
+function drawProg(){
+  const s = S.screen, st = stage();
+  let hint = '', warn = false, extra = '';
+  if (s === 'off') hint = S.installed ? 'Bấm <b>Bật máy</b> để khởi động lại.' : 'Bấm <b>Bật máy</b> trên màn hình đen.';
+  else if (s === 'noboot') { hint = 'Bấm <b>Gắn lại bộ cài</b> ở thanh trên, rồi <b>Tắt máy</b> và bật lại.'; warn = true; }
+  else if (s === 'grub') { if (S.installed) { hint = 'Bấm <b>Tháo bộ cài</b> ở thanh trên, rồi <b>Tắt máy</b> và bật lại.'; warn = true; } else hint = 'Chọn một mục để xem kết quả, rồi nhấn <b>ENTER</b> để mở trình cài.'; }
+  else if (s === 'account') hint = 'Điền đủ thông tin tài khoản rồi bấm <b>Next</b>.';
+  else if (s === 'review') hint = 'Đọc dòng <b>Installation disk</b>: ổ nào sẽ bị xoá? Đúng ổ thì bấm <b>Install</b>.';
+  else if (s === 'installing') hint = 'Đang cài – không tắt máy.';
+  else if (STEPS.includes(s) || s === 'done') hint = 'Đọc câu hỏi trên màn hình, chọn một mục, đọc khung màu cam rồi bấm <b>Next</b>.';
+  else if (s === 'remove') hint = S.iso ? 'Bấm <b>Tháo bộ cài</b> ở thanh trên, rồi nhấn <b>ENTER</b>.' : 'Nhấn <b>ENTER</b> để khởi động lại.';
+  else if (s === 'live') { warn = true; hint = (S.liveLost && !S.liveFile) ? 'Tệp tạo lúc trước đã mất – phiên chạy thử không ghi gì lên ổ cứng. ' : '';
+    hint += S.installed ? 'Em đang chạy thử từ bộ cài. Bấm ⏻ › Restart để khởi động lại.' : 'Em đang <b>chạy thử</b>, máy CHƯA được cài. Bấm <b>Install Ubuntu</b> trên màn hình để cài thật.'; }
+  else if (s === 'login') hint = 'Nhập mật khẩu em đã tạo rồi bấm <b>Log In</b>.';
+  else if (s === 'desktop') {
+    const f = S.diskFile;
+    const checks = [
+      ['Vào được Ubuntu khi đã tháo bộ cài', true],
+      ['Đăng nhập bằng tài khoản vừa tạo', true],
+      ['Đúng phiên bản – mở Settings (bánh răng)', !!S.c3],
+      ['Tệp KiemTra.txt còn sau khi khởi động lại', !!S.c4, [
+        ['Mở Text Editor, gõ họ tên, Save với tên KiemTra.txt vào Documents', !!f],
+        ['Bấm ⏻ › Restart…, đăng nhập lại', !!(f && f.boot < S.bootN)],
+        ['Mở Files › Documents › KiemTra.txt, thấy tệp còn nguyên', !!S.c4]]],
+    ];
+    const all = checks.every(c => c[1]);
+    hint = all ? '<b>Đạt đủ 4 điều kiện bàn giao!</b> Bấm Làm lại để thử các lựa chọn khác.' : 'Kiểm tra máy trước khi bàn giao:';
+    extra = `<ul class="chk">${checks.map(c => `<li class="${c[1]?'ok':''}"><i>${c[1]?'✓':''}</i><span>${c[0]}${c[2] ? `<ul class="sub">${c[2].map((x, k) => `<li class="${x[1]?'ok':''}"><i>${x[1]?'✓':k+1}</i><span>${x[0]}</span></li>`).join('')}</ul>` : ''}</span></li>`).join('')}</ul>`;
+  }
+  $('#prog').innerHTML = `<ol class="steps">${STAGES.map((t, i) => `<li class="${i < st || (i === 3 && S.c3 && S.c4) ? 'done' : i === st ? 'now' : ''}"><b>${i < st || (i === 3 && S.c3 && S.c4) ? '✓' : i + 1}</b><span>${t}</span></li>`).join('')}</ol>
+    <div class="next ${warn ? 'warn' : ''}"><span class="lb">${warn ? 'Chú ý' : 'Tiếp theo'}</span><span>${hint}</span></div>${extra}`;
+}
+
+const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function bind(){
+  const on = (id, f) => { const e = document.getElementById(id); if (e) e.onclick = f; };
+  document.querySelectorAll('.opt[data-g]').forEach(b => b.onclick = () => { S.pick[b.dataset.g] = b.dataset.v; render(); });
+  document.querySelectorAll('.grub button').forEach(b => b.onclick = () => { S.gsel = +b.dataset.i; render(); });
+  on('on', () => { S.power = true; S.note = null; boot(); });
+  on('enter', () => {
+    if (S.screen === 'grub') { if (S.installed) { S.gsel = 0; } S.pick = {...S.pick, a:undefined}; go('lang'); return; }
+    if (S.screen === 'remove') { boot(); }
+  });
+  on('back', () => { const i = STEPS.indexOf(S.screen); if (i > 0) go(STEPS[i-1]); });
+  on('next', next);
+  on('toInst', () => { S.pick.a = undefined; go('tryinst'); });
+  bindOS();
+  if (S.screen === 'account') bindAcc();
+}
+
+function boot(){
+  S.bootN++; S.app = null; S.saved = false; S.pwr = false; S.toast = null; S.term = []; S.view = false; S.loginErr = false;
+  S.liveLost = !!S.liveFile; S.liveFile = null;
+  if (S.iso) { S.gsel = 0; go('grub'); }
+  else if (S.installed) go('login');
+  else go('noboot');
+}
+function next(){
+  const s = S.screen, p = S.pick;
+  if (s === 'lang') return go('tryinst');
+  if (s === 'tryinst') return p.a === 'try' ? go('live') : go('type');
+  if (s === 'type') return go('apps');
+  if (s === 'apps') return go('disk');
+  if (s === 'disk') return go('account');
+  if (s === 'account') return go('review');
+  if (s === 'review') return install();
+  if (s === 'done') { if (p.f === 'keep') return go('live'); return go('remove'); }
+}
+function install(){
+  go('installing');
+  const msgs = ['Copying files…','Installing system…','Configuring hardware…','Setting up user…','Almost done…'];
+  let v = 0;
+  const t = setInterval(() => {
+    v += 4; const pb = document.getElementById('pb'), tx = document.getElementById('ptxt');
+    if (!pb || S.screen !== 'installing') { clearInterval(t); return; }
+    pb.style.width = v + '%'; tx.textContent = msgs[Math.min(4, Math.floor(v / 20))];
+    if (v >= 100) { clearInterval(t); S.installed = true; S.pick.f = undefined; go('done'); }
+  }, 200);
+}
+function reset(){ fresh(); render(); }
+
+$('#resetBtn').onclick = reset;
+$('#isoBtn').onclick = () => { S.iso = !S.iso; render(); };
+$('#offBtn').onclick = () => {
+  const mid = S.screen === 'installing';
+  if (mid) S.installed = false;
+  S.power = false;
+  S.note = mid ? ['Em vừa tắt máy giữa lúc đang cài', ['Quá trình cài bị dừng giữa chừng nên phải cài lại từ đầu. Lần sau đợi cài xong rồi mới tắt.']]
+    : S.screen === 'live' && !S.installed ? ['Phiên chạy thử đã kết thúc', ['Mọi thứ em làm trong phiên Try Ubuntu đã mất. Ổ cứng vẫn trống vì máy chưa được cài.']] : null;
+  if (mid) S.pick = {};
+  go('off');
+};
+fresh(); render();
+})();
+</script>
+</body></html>
